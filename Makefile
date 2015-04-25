@@ -1,6 +1,6 @@
-VERSION=v2.4
+VERSION=v2.4nl
 
-prefix=/usr/local
+prefix=
 
 CC=$(CROSS_COMPILE)gcc
 LD=$(CROSS_COMPILE)ld
@@ -35,7 +35,7 @@ MANDIR=$(DESTDIR)$(mandir)
 LIBS_posix=
 LIBS_darwin=
 LIBS_mingw=-lws2_32 -lwinmm -lgdi32
-LIB_RTMP=-Llibrtmp -lrtmp
+LIB_RTMP=-Llibrtmp -lrtmp 
 LIBS=$(LIB_RTMP) $(CRYPTO_LIB) $(LIBS_$(SYS)) $(XLIBS)
 
 THREADLIB_posix=-lpthread

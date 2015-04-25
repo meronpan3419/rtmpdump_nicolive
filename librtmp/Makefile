@@ -1,6 +1,6 @@
-VERSION=v2.4
+VERSION=v2.4nl
 
-prefix=/usr/local
+prefix=
 
 incdir=$(prefix)/include/librtmp
 bindir=$(prefix)/bin

@@ -159,6 +159,9 @@ extern "C"
     AVal token;
     AVal pubUser;
     AVal pubPasswd;
+    AVal nlplaypath;
+    AVal nltoken;
+    AVal nlid;
     AMFObject extras;
     int edepth;
 
@@ -307,7 +310,10 @@ extern "C"
 			AVal *subscribepath,
 			AVal *usherToken,
 			int dStart,
-			int dStop, int bLiveStream, long int timeout);
+			int dStop, int bLiveStream, long int timeout,
+			AVal *nlplaypath,
+			AVal *nltoken,
+			AVal *nlid);
 
   int RTMP_Connect(RTMP *r, RTMPPacket *cp);
   struct sockaddr;

@@ -446,13 +446,19 @@ RTMP_SetupStream(RTMP *r,
 		 AVal *subscribepath,
 		 AVal *usherToken,
 		 int dStart,
-		 int dStop, int bLiveStream, long int timeout)
+		 int dStop, int bLiveStream, long int timeout,
+		 AVal *nlplaypath,
+		 AVal *nltoken,
+		 AVal *nlid)
 {
+  RTMP_LogPrintf("Protocol : %s", RTMPProtocolStrings[protocol&7]);
   RTMP_Log(RTMP_LOGDEBUG, "Protocol : %s", RTMPProtocolStrings[protocol&7]);
   RTMP_Log(RTMP_LOGDEBUG, "Hostname : %.*s", host->av_len, host->av_val);
   RTMP_Log(RTMP_LOGDEBUG, "Port     : %d", port);
   RTMP_Log(RTMP_LOGDEBUG, "Playpath : %s", playpath->av_val);
 
+  if (nlplaypath && nlplaypath->av_val)
+    RTMP_Log(RTMP_LOGDEBUG, "nlplaypath : %s", nlplaypath->av_val);
   if (tcUrl && tcUrl->av_val)
     RTMP_Log(RTMP_LOGDEBUG, "tcUrl    : %s", tcUrl->av_val);
   if (swfUrl && swfUrl->av_val)
@@ -476,6 +482,8 @@ RTMP_SetupStream(RTMP *r,
 
   RTMP_Log(RTMP_LOGDEBUG, "live     : %s", bLiveStream ? "yes" : "no");
   RTMP_Log(RTMP_LOGDEBUG, "timeout  : %ld sec", timeout);
+  RTMP_Log(RTMP_LOGDEBUG, "nltoken    : %s", nltoken->av_val);
+  RTMP_Log(RTMP_LOGDEBUG, "nlid       : %s", nlid->av_val);
 
 #ifdef CRYPTO
   if (swfSHA256Hash != NULL && swfSize > 0)
@@ -513,6 +521,12 @@ RTMP_SetupStream(RTMP *r,
     r->Link.flashVer = RTMP_DefaultFlashVer;
   if (subscribepath && subscribepath->av_len)
     r->Link.subscribepath = *subscribepath;
+  if (nlplaypath && nlplaypath->av_len)
+    r->Link.nlplaypath = *nlplaypath;
+  if (nltoken && nltoken->av_len)
+    r->Link.nltoken = *nltoken;
+  if (nlid && nlid->av_len)
+    r->Link.nlid = *nlid;
   if (usherToken && usherToken->av_len)
     r->Link.usherToken = *usherToken;
   r->Link.seekTime = dStart;
@@ -1743,6 +1757,38 @@ RTMP_SendCreateStream(RTMP *r)
   return RTMP_SendPacket(r, &packet, TRUE);
 }
 
+SAVC(nlPlayNotice);
+
+int
+RTMP_SendNlplayNotice(RTMP *r, AVal *nlplaypath, AVal *nltoken, AVal *nlid)
+{
+  RTMPPacket packet;
+  char pbuf[256], *pend = pbuf + sizeof(pbuf);
+  char *enc;
+
+  packet.m_nChannel = 0x03;  /* control channel (invoke) */
+  packet.m_headerType = RTMP_PACKET_SIZE_MEDIUM;
+  packet.m_packetType = RTMP_PACKET_TYPE_INVOKE;
+  packet.m_nTimeStamp = 0;
+  packet.m_nInfoField2 = 0;
+  packet.m_hasAbsTimestamp = 0;
+  packet.m_body = pbuf + RTMP_MAX_HEADER_SIZE;
+
+  enc = packet.m_body;
+  enc = AMF_EncodeString(enc, pend, &av_nlPlayNotice);
+  enc = AMF_EncodeNumber(enc, pend, ++r->m_numInvokes);
+  *enc++ = AMF_NULL;    /* NULL */
+
+  enc = AMF_EncodeString(enc, pend, nlplaypath);
+  enc = AMF_EncodeString(enc, pend, nltoken);
+  enc = AMF_EncodeString(enc, pend, nlid);
+  packet.m_nBodySize = enc - packet.m_body;
+
+  r->Link.playpath = *nlid;
+
+  return RTMP_SendPacket(r, &packet, TRUE);
+}
+
 SAVC(FCSubscribe);
 
 static int
@@ -1759,7 +1805,7 @@ SendFCSubscribe(RTMP *r, AVal *subscribepath)
   packet.m_hasAbsTimestamp = 0;
   packet.m_body = pbuf + RTMP_MAX_HEADER_SIZE;
 
-  RTMP_Log(RTMP_LOGDEBUG, "FCSubscribe: %s", subscribepath->av_val);
+  RTMP_Log(RTMP_LOGDEBUG, "AAAAAAFCSubscribe: %s", subscribepath->av_val);
   enc = packet.m_body;
   enc = AMF_EncodeString(enc, pend, &av_FCSubscribe);
   enc = AMF_EncodeNumber(enc, pend, ++r->m_numInvokes);
@@ -2954,6 +3000,7 @@ HandleInvoke(RTMP *r, const char *body, unsigned int nBodySize)
 
       if (AVMATCH(&methodInvoked, &av_connect))
 	{
+	
 	  if (r->Link.token.av_len)
 	    {
 	      AMFObjectProperty p;
@@ -2965,6 +3012,7 @@ HandleInvoke(RTMP *r, const char *body, unsigned int nBodySize)
 	    }
 	  if (r->Link.protocol & RTMP_FEATURE_WRITE)
 	    {
+              RTMP_Log(RTMP_LOGDEBUG, "Link.protocol %d", r->Link.protocol);
 	      SendReleaseStream(r);
 	      SendFCPublish(r);
 	    }
@@ -2984,7 +3032,12 @@ HandleInvoke(RTMP *r, const char *body, unsigned int nBodySize)
 	      if (r->Link.subscribepath.av_len)
 	        SendFCSubscribe(r, &r->Link.subscribepath);
 	      else if (r->Link.lFlags & RTMP_LF_LIVE)
-	        SendFCSubscribe(r, &r->Link.playpath);
+	        {
+	          if (r->Link.nlplaypath.av_len != 0)
+	            RTMP_SendNlplayNotice(r, &r->Link.nlplaypath, &r->Link.nltoken, &r->Link.nlid);
+	          else
+	            SendFCSubscribe(r, &r->Link.playpath);
+	        }
 	    }
 	}
       else if (AVMATCH(&methodInvoked, &av_createStream))
